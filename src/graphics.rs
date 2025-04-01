@@ -15,6 +15,7 @@ pub struct Graphics {
     stdout: io::Stdout,
     width: u32,
     height: u32,
+    next_image_id: u32,
 }
 
 impl Graphics {
@@ -35,6 +36,7 @@ impl Graphics {
             stdout: io::stdout(),
             width,
             height,
+            next_image_id: 1,
         })
     }
 
@@ -58,12 +60,41 @@ impl Graphics {
 
         // Send the image to the terminal using kitty graphics protocol
         self.stdout.write_all(b"\x1b_G")?; // Start graphics command
-        self.stdout.write_all(format!("a=T,f=100,s={},v={},c={},r={}", 
-            img.width(), img.height(), 
-            img.width() / 8, img.height() / 16).as_bytes())?;
+        
+        // First frame: transmit the image
+        if self.next_image_id == 1 {
+            self.stdout.write_all(format!("a=T,f=100,s={},v={},c={},r={},i={}", 
+                img.width(), img.height(), 
+                img.width() / 8, img.height() / 16,
+                self.next_image_id).as_bytes())?;
+        } else {
+            // Subsequent frames: put the image
+            self.stdout.write_all(format!("a=p,f=100,s={},v={},c={},r={},i={}", 
+                img.width(), img.height(), 
+                img.width() / 8, img.height() / 16,
+                self.next_image_id).as_bytes())?;
+        }
+        
         self.stdout.write_all(b";")?;
         self.stdout.write_all(png_base64.as_bytes())?;
         self.stdout.write_all(b"\x1b\\")?; // End graphics command
+        self.stdout.flush()?;
+
+        // Increment the image ID
+        self.next_image_id += 1;
+        Ok(())
+    }
+
+    pub fn update_image_position(&mut self, image_id: u32, col: u16, row: u16) -> io::Result<()> {
+        // Move cursor to new position
+        self.move_cursor(col, row)?;
+
+        // Send command to update image position
+        self.stdout.write_all(b"\x1b_G")?;
+        self.stdout.write_all(format!("a=p,i={},c={},r={}", 
+            image_id,
+            col, row).as_bytes())?;
+        self.stdout.write_all(b"\x1b\\")?;
         self.stdout.flush()
     }
 
@@ -88,6 +119,10 @@ impl Graphics {
     }
 
     pub fn cleanup(&mut self) -> io::Result<()> {
+        // Delete all images
+        self.stdout.write_all(b"\x1b_Ga=d,d=a\x1b\\")?;
+        self.stdout.flush()?;
+
         // Disable raw mode and leave alternate screen
         crossterm::terminal::disable_raw_mode()?;
         execute!(self.stdout, LeaveAlternateScreen)?;

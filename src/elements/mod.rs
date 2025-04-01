@@ -98,6 +98,8 @@ pub struct Grid {
     x_offset: u32,
     y_offset: u32,
     color: Rgba<u8>,
+    active_cell: Option<(u32, u32)>, // (row, col)
+    highlight_color: Rgba<u8>,
 }
 
 impl Grid {
@@ -118,7 +120,19 @@ impl Grid {
             x_offset,
             y_offset,
             color,
+            active_cell: None,
+            highlight_color: Rgba([255, 255, 0, 255]), // Neon yellow
         }
+    }
+
+    pub fn set_active_cell(&mut self, row: u32, col: u32) {
+        if row < self.rows && col < self.cols {
+            self.active_cell = Some((row, col));
+        }
+    }
+
+    pub fn get_active_cell(&self) -> Option<(u32, u32)> {
+        self.active_cell
     }
 
     pub fn render(&self) -> ImageBuffer<Rgba<u8>, Vec<u8>> {
@@ -153,6 +167,31 @@ impl Grid {
         // Draw final horizontal line
         for x in 0..total_width {
             img.put_pixel(x, total_height - 1, self.color);
+        }
+
+        // Highlight active cell if any
+        if let Some((row, col)) = self.active_cell {
+            let start_x = col * self.square_width;
+            let start_y = row * self.square_height;
+            let end_x = start_x + self.square_width;
+            let end_y = start_y + self.square_height;
+
+            // Fill the cell with highlight color
+            for y in start_y..end_y {
+                for x in start_x..end_x {
+                    img.put_pixel(x, y, self.highlight_color);
+                }
+            }
+
+            // Redraw the grid lines over the highlight
+            for x in start_x..=end_x {
+                img.put_pixel(x, start_y, self.color);
+                img.put_pixel(x, end_y - 1, self.color);
+            }
+            for y in start_y..=end_y {
+                img.put_pixel(start_x, y, self.color);
+                img.put_pixel(end_x - 1, y, self.color);
+            }
         }
 
         img
